@@ -16,14 +16,68 @@ class Modifier:
 class CenterHorizontally(Modifier):
     def modify(self, obj):
         pos_x = 0.5 * (self.base.cols - string_width(text.text, self.base.widths))
+        obj.x = pos_x
+
+class RepeatableTask:
+    def __init__(self, owner):
+        self.owner = owner
+        self.seconds = 1
+        self.container = None
+        self.repeat = None
+
+        self._n = 0
+
+    def every(self, seconds):
+        self.seconds = seconds
+
+        return self.owner
+
+    def do(self, state_container):
+        self.container = state_container
+
+        return self.owner
+
+    def times(self, n):
+        self.repeat = n
+
+        return self.owner
+
+    def _run_task(self):
+        self._n = self._n + 1
+
+        self.container.update()
 
 class MatrixObject:
     def __init__(self, x, y):
         self.x = x
         self.y = y
+        self.base = None
+        self._actions = []
+
+    def every(self, seconds):
+        if not seconds:
+            raise MatrixObjectError('Repeat time not given')
+
+        repeatable_task = RepeatableTask(self)
+        repeatable_task.every(seconds)
+
+        self._actions.append(repeatable_task)
+
+        return repeatable_task
+
+    def do(self, task):
+        repeatable_task = RepeatableTask(self)
+        repeatable_task.do(task)
+
+        self._actions.append(repeatable_task)
+
+        return repeatable_task
 
     def apply(self, modifier):
+        modifier.base = self.base
         modifier.modify(self)
+
+        return self
 
     def _render(self, matrix_base):
         '''Implementation for rendering a object onto a native canvas'''
@@ -36,11 +90,12 @@ class Text(MatrixObject):
 
         self.text = text
         self.color = color
+        self.last_length = None
 
     def _render(self, matrix_base):
         native_frame = matrix_base.frame
 
-        return graphics.DrawText(native_frame, matrix_base.font, self.x, self.y, self.color.native(), self.text)
+        self.last_length = graphics.DrawText(native_frame, matrix_base.font, self.x, self.y, self.color.native(), self.text)
 
 class Panel:
     def __init__(self, base):
@@ -62,6 +117,7 @@ class Panel:
 
     def add(self, obj):
         if isinstance(obj, MatrixObject):
+            obj.base = self._base
             self._objects.append(obj)
         else:
             raise MatrixObjectError()
